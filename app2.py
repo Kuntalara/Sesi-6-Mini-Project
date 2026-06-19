@@ -17,7 +17,8 @@ from google.genai import types
 # =========================
 GEMINI_API_KEY = st.secrets.get("GOOGLE_API_KEY", None)
 
-genai.configure(api_key=GEMINI_API_KEY)
+# genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 # =========================
