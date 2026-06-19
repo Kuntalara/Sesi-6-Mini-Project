@@ -1,7 +1,16 @@
+# import streamlit as st
+# import pandas as pd
+# import re
+# import google.generativeai as genai
+
+# Import library utama Streamlit
 import streamlit as st
+# Import pandas untuk data tabel
 import pandas as pd
-import re
-import google.generativeai as genai
+# Import client Gemini
+from google import genai
+# Import 'types' untuk konfigurasi (system prompt, temperature)
+from google.genai import types
 
 # =========================
 # CONFIG
