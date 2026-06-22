@@ -11,6 +11,7 @@ import pandas as pd
 from google import genai
 # Import 'types' untuk konfigurasi (system prompt, temperature)
 from google.genai import types
+import re
 
 # =========================
 # CONFIG
@@ -19,7 +20,22 @@ GEMINI_API_KEY = st.secrets.get("GOOGLE_API_KEY", None)
 
 # genai.configure(api_key=GEMINI_API_KEY)
 client = genai.Client(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")
+# model = genai.GenerativeModel("gemini-2.5-flash")
+def generate_sql(question: str):
+    prompt = build_prompt(question)
+
+    resp = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+    )
+
+    sql = resp.text.strip()
+
+    sql = re.sub(r"```sql", "", sql, flags=re.I)
+    sql = sql.replace("```", "").strip()
+
+    return sql
+
 
 # =========================
 # SCHEMA
@@ -55,15 +71,15 @@ SQL:
 # =========================
 # GENERATE SQL
 # =========================
-def generate_sql(question: str):
-    prompt = build_prompt(question)
-    resp = model.generate_content(prompt)
-    sql = resp.text.strip()
+# def generate_sql(question: str):
+#     prompt = build_prompt(question)
+#     resp = model.generate_content(prompt)
+#     sql = resp.text.strip()
 
-    sql = re.sub(r"```sql", "", sql, flags=re.I)
-    sql = sql.replace("```", "").strip()
+#     sql = re.sub(r"```sql", "", sql, flags=re.I)
+#     sql = sql.replace("```", "").strip()
 
-    return sql
+#     return sql
 
 # =========================
 # VALIDATE SQL
