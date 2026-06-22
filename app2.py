@@ -46,9 +46,9 @@ def generate_sql(question: str):
 # SCHEMA
 # =========================
 SCHEMA_STR = """
-employees(nip, nama, divisi, jabatan, join_date)
-trainings(training_id, nama_diklat, tanggal)
-enrollments(nip, training_id, status, nilai)
+employees(nip PK, nama, divisi, jabatan, join_date)
+trainings(training_id PK, nama_diklat, tanggal)
+enrollments(nip PK FK, training_id PK FK, status, nilai)
 """
 
 # =========================
