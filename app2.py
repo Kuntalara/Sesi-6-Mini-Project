@@ -18,7 +18,7 @@ from sqlalchemy.pool import StaticPool
 # CONFIG
 # =========================
 GEMINI_API_KEY = st.secrets.get("GOOGLE_API_KEY", None)
-DB_URL='postgresql://postgres.hnbvlalatrskmnwhnxwa:/vW9dn#2$C?,7@k@aws-1-ap-south-1.pooler.supabase.com:5432/postgres'
+DB_URL='postgresql://postgres.hnbvlalatrskmnwhnxwa:/vW9dn#2$C?,7%40k@aws-1-ap-south-1.pooler.supabase.com:5432/postgres'
 engine = create_engine(DB_URL)
 
 # genai.configure(api_key=GEMINI_API_KEY)
