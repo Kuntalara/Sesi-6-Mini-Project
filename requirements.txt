@@ -3,3 +3,4 @@ pandas
 google-genai
 google-genai>=1.0.0
 sqlalchemy
+psycopg2-binary
