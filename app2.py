@@ -1,7 +1,4 @@
 
-GEMINI_API_KEY = st.secrets.get("GOOGLE_API_KEY", None)
-DB_URL='postgresql://postgres.hnbvlalatrskmnwhnxwa:/vW9dn#2$C?,7%40k@aws-1-ap-south-1.pooler.supabase.com:5432/postgres'
-
 import json
 import re
 
@@ -10,6 +7,9 @@ import streamlit as st
 
 from google import genai
 from sqlalchemy import create_engine, text
+GEMINI_API_KEY = st.secrets.get("GOOGLE_API_KEY", None)
+DB_URL='postgresql://postgres.hnbvlalatrskmnwhnxwa:/vW9dn#2$C?,7%40k@aws-1-ap-south-1.pooler.supabase.com:5432/postgres'
+
 
 # =========================
 # CONFIG
