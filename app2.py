@@ -131,6 +131,37 @@ def run_sql(sql: str):
         "message": ["run_sql belum dihubungkan ke database"]
     })
 
+def ambil_sql(resp) -> str:
+    # function calling / dict
+    if isinstance(resp, dict):
+        if 'sql' in resp: return str(resp['sql']).rstrip(';').strip()
+        args = resp.get('arguments') or {}
+        if isinstance(args, dict) and 'sql' in args:
+            return str(args['sql']).rstrip(';').strip()
+        resp = json.dumps(resp)
+    teks = str(resp).strip()
+    # buang code fence ```sql ... ```
+    m = re.search(r'```(?:sql|json)?\s*(.+?)```', teks, re.S)
+    if m: teks = m.group(1).strip()
+    # JSON {"sql": ...}
+    if teks.startswith('{'):
+        try: teks = json.loads(teks).get('sql', teks)
+        except Exception: pass
+    # ambil mulai dari SELECT (buang teks pengantar)
+    m = re.search(r'(select\b.+)', teks, re.I | re.S)
+    if m: teks = m.group(1)
+    return teks.rstrip(';').strip()
+
+# Uji parser pada beberapa bentuk respons
+for contoh in [
+    'SELECT 1',
+    '```sql\nSELECT 2\n```',
+    '{"sql": "SELECT 3"}',
+    {'name': 'run_sql', 'arguments': {'sql': 'SELECT 4'}},
+    'Tentu, ini querinya:\nSELECT 5 FROM employee',
+]:
+    print(repr(ambil_sql(contoh)))
+
 # =========================
 # VISUALIZE
 # =========================
@@ -162,7 +193,7 @@ def ask(question: str):
             return None, None
 
     try:
-        df = run_sql(sql)
+        df = eksekusi_aman(sql)
     except Exception as e:
         return sql, pd.DataFrame({"error": [str(e)]})
 
