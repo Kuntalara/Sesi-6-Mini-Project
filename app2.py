@@ -12,11 +12,14 @@ from google import genai
 # Import 'types' untuk konfigurasi (system prompt, temperature)
 from google.genai import types
 import re
-
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import StaticPool
 # =========================
 # CONFIG
 # =========================
 GEMINI_API_KEY = st.secrets.get("GOOGLE_API_KEY", None)
+DB_URL='postgresql://postgres.hnbvlalatrskmnwhnxwa:/vW9dn#2$C?,7@k@aws-1-ap-south-1.pooler.supabase.com:5432/postgres'
+engine = create_engine(DB_URL)
 
 # genai.configure(api_key=GEMINI_API_KEY)
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -35,6 +38,8 @@ def generate_sql(question: str):
     sql = sql.replace("```", "").strip()
 
     return sql
+
+
 
 
 # =========================
@@ -110,6 +115,17 @@ def validate_sql(sql: str) -> bool:
 # =========================
 # FAKE RUN SQL (replace dengan DB kamu)
 # =========================
+
+def eksekusi(sql: str) -> pd.DataFrame:
+    with engine.connect() as conn:
+        return pd.read_sql(text(sql), conn)
+
+def eksekusi_aman(sql: str):
+    try:
+        return eksekusi(sql), None        # sukses
+    except Exception as e:
+        return None, str(e)               # pesan error -> umpan balik
+
 def run_sql(sql: str):
     return pd.DataFrame({
         "message": ["run_sql belum dihubungkan ke database"]
