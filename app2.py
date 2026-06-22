@@ -1,71 +1,93 @@
-# import streamlit as st
-# import pandas as pd
-# import re
-# import google.generativeai as genai
 
-# Import library utama Streamlit
-import streamlit as st
-# Import pandas untuk data tabel
-import pandas as pd
-# Import client Gemini
-from google import genai
-# Import 'types' untuk konfigurasi (system prompt, temperature)
-from google.genai import types
+GEMINI_API_KEY = st.secrets.get("GOOGLE_API_KEY", None)
+DB_URL='postgresql://postgres.hnbvlalatrskmnwhnxwa:/vW9dn#2$C?,7%40k@aws-1-ap-south-1.pooler.supabase.com:5432/postgres'
+
+import json
 import re
+
+import pandas as pd
+import streamlit as st
+
+from google import genai
 from sqlalchemy import create_engine, text
-from sqlalchemy.pool import StaticPool
+
 # =========================
 # CONFIG
 # =========================
-GEMINI_API_KEY = st.secrets.get("GOOGLE_API_KEY", None)
-DB_URL='postgresql://postgres.hnbvlalatrskmnwhnxwa:/vW9dn#2$C?,7%40k@aws-1-ap-south-1.pooler.supabase.com:5432/postgres'
-engine = create_engine(DB_URL)
 
-# genai.configure(api_key=GEMINI_API_KEY)
-client = genai.Client(api_key=GEMINI_API_KEY)
-# model = genai.GenerativeModel("gemini-2.5-flash")
-def generate_sql(question: str):
-    prompt = build_prompt(question)
+if not GEMINI_API_KEY:
+    st.error("GOOGLE_API_KEY belum diset di Streamlit Secrets")
+    st.stop()
 
-    resp = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-    )
+if not DB_URL:
+    st.error("DATABASE_URL belum diset di Streamlit Secrets")
+    st.stop()
 
-    sql = resp.text.strip()
+# =========================
+# GEMINI CLIENT
+# =========================
 
-    sql = re.sub(r"```sql", "", sql, flags=re.I)
-    sql = sql.replace("```", "").strip()
+@st.cache_resource
+def get_client():
+    return genai.Client(api_key=GEMINI_API_KEY)
 
-    return sql
+client = get_client()
 
+# =========================
+# DATABASE
+# =========================
 
+@st.cache_resource
+def get_engine():
+    return create_engine(DB_URL)
 
+engine = get_engine()
 
 # =========================
 # SCHEMA
 # =========================
+
 SCHEMA_STR = """
-employees(nip PK, nama, divisi, jabatan, join_date)
-trainings(training_id PK, nama_diklat, tanggal)
-enrollments(nip PK FK, training_id PK FK, status, nilai)
+employees(
+    nip PRIMARY KEY,
+    nama,
+    divisi,
+    jabatan,
+    join_date
+)
+
+trainings(
+    training_id PRIMARY KEY,
+    nama_diklat,
+    tanggal
+)
+
+enrollments(
+    nip PRIMARY KEY FOREIGN KEY REFERENCES employees(nip),
+    training_id PRIMARY KEY FOREIGN KEY REFERENCES trainings(training_id),
+    status,
+    nilai
+)
 """
 
 # =========================
 # PROMPT
 # =========================
+
 def build_prompt(question: str) -> str:
     return f"""
-Anda adalah SQL generator PostgreSQL.
+Anda adalah generator SQL PostgreSQL.
 
-Schema:
+Schema database:
+
 {SCHEMA_STR}
 
 Aturan:
-- HANYA output SQL SELECT
-- Tidak boleh ada penjelasan
-- Tidak boleh markdown
-- 1 query saja
+- HANYA hasilkan SATU query PostgreSQL SELECT.
+- Jangan gunakan INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE.
+- Jangan gunakan markdown.
+- Jangan gunakan penjelasan.
+- Output hanya SQL.
 
 Pertanyaan:
 {question}
@@ -74,25 +96,74 @@ SQL:
 """
 
 # =========================
+# PARSER SQL
+# =========================
+
+def ambil_sql(text_response) -> str:
+    if isinstance(text_response, dict):
+
+        if "sql" in text_response:
+            return str(text_response["sql"]).strip().rstrip(";")
+
+        args = text_response.get("arguments", {})
+
+        if isinstance(args, dict) and "sql" in args:
+            return str(args["sql"]).strip().rstrip(";")
+
+        text_response = json.dumps(text_response)
+
+    teks = str(text_response).strip()
+
+    m = re.search(r"```(?:sql)?\s*(.*?)```", teks, re.I | re.S)
+    if m:
+        teks = m.group(1).strip()
+
+    if teks.startswith("{"):
+        try:
+            obj = json.loads(teks)
+            if "sql" in obj:
+                teks = obj["sql"]
+        except Exception:
+            pass
+
+    m = re.search(r"(select\b.*)", teks, re.I | re.S)
+    if m:
+        teks = m.group(1)
+
+    return teks.strip().rstrip(";")
+
+# =========================
 # GENERATE SQL
 # =========================
-# def generate_sql(question: str):
-#     prompt = build_prompt(question)
-#     resp = model.generate_content(prompt)
-#     sql = resp.text.strip()
 
-#     sql = re.sub(r"```sql", "", sql, flags=re.I)
-#     sql = sql.replace("```", "").strip()
+def generate_sql(question: str) -> str:
+    prompt = build_prompt(question)
 
-#     return sql
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+    )
+
+    return ambil_sql(response.text)
 
 # =========================
 # VALIDATE SQL
 # =========================
-FORBIDDEN = ["drop", "delete", "update", "insert", "alter", "truncate", "create", "grant"]
+
+FORBIDDEN = [
+    "drop",
+    "delete",
+    "update",
+    "insert",
+    "alter",
+    "truncate",
+    "create",
+    "grant",
+]
 
 def validate_sql(sql: str) -> bool:
-    if not sql or not sql.strip():
+
+    if not sql:
         return False
 
     s = sql.lower().strip()
@@ -100,8 +171,8 @@ def validate_sql(sql: str) -> bool:
     if not s.startswith("select"):
         return False
 
-    for f in FORBIDDEN:
-        if f in s:
+    for keyword in FORBIDDEN:
+        if keyword in s:
             return False
 
     if s.count(";") > 1:
@@ -113,65 +184,31 @@ def validate_sql(sql: str) -> bool:
     return True
 
 # =========================
-# FAKE RUN SQL (replace dengan DB kamu)
+# EXECUTE SQL
 # =========================
 
-def eksekusi(sql: str) -> pd.DataFrame:
+def run_sql(sql: str) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(text(sql), conn)
 
-def eksekusi_aman(sql: str):
+def run_sql_safe(sql: str):
     try:
-        return eksekusi(sql), None        # sukses
+        return run_sql(sql), None
     except Exception as e:
-        return None, str(e)               # pesan error -> umpan balik
-
-def run_sql(sql: str):
-    return pd.DataFrame({
-        "message": ["run_sql belum dihubungkan ke database"]
-    })
-
-def ambil_sql(resp) -> str:
-    # function calling / dict
-    if isinstance(resp, dict):
-        if 'sql' in resp: return str(resp['sql']).rstrip(';').strip()
-        args = resp.get('arguments') or {}
-        if isinstance(args, dict) and 'sql' in args:
-            return str(args['sql']).rstrip(';').strip()
-        resp = json.dumps(resp)
-    teks = str(resp).strip()
-    # buang code fence ```sql ... ```
-    m = re.search(r'```(?:sql|json)?\s*(.+?)```', teks, re.S)
-    if m: teks = m.group(1).strip()
-    # JSON {"sql": ...}
-    if teks.startswith('{'):
-        try: teks = json.loads(teks).get('sql', teks)
-        except Exception: pass
-    # ambil mulai dari SELECT (buang teks pengantar)
-    m = re.search(r'(select\b.+)', teks, re.I | re.S)
-    if m: teks = m.group(1)
-    return teks.rstrip(';').strip()
-
-# Uji parser pada beberapa bentuk respons
-for contoh in [
-    'SELECT 1',
-    '```sql\nSELECT 2\n```',
-    '{"sql": "SELECT 3"}',
-    {'name': 'run_sql', 'arguments': {'sql': 'SELECT 4'}},
-    'Tentu, ini querinya:\nSELECT 5 FROM employee',
-]:
-    print(repr(ambil_sql(contoh)))
+        return None, str(e)
 
 # =========================
 # VISUALIZE
 # =========================
+
 def visualize(df: pd.DataFrame):
+
     if df is None or df.empty:
-        st.write("No data")
+        st.info("Tidak ada data.")
         return
 
     if len(df.columns) != 2:
-        st.dataframe(df)
+        st.dataframe(df, use_container_width=True)
         return
 
     col1, col2 = df.columns
@@ -179,51 +216,68 @@ def visualize(df: pd.DataFrame):
     if pd.api.types.is_numeric_dtype(df[col2]):
         st.bar_chart(df.set_index(col1))
     else:
-        st.dataframe(df)
+        st.dataframe(df, use_container_width=True)
 
 # =========================
-# ASK PIPELINE
+# PIPELINE
 # =========================
+
 def ask(question: str):
+
     sql = generate_sql(question)
 
     if not validate_sql(sql):
-        sql = generate_sql(question)
-        if not validate_sql(sql):
-            return None, None
 
-    try:
-        df = eksekusi_aman(sql)
-    except Exception as e:
-        return sql, pd.DataFrame({"error": [str(e)]})
+        sql = generate_sql(question)
+
+        if not validate_sql(sql):
+            return None, pd.DataFrame(
+                {"error": ["Gagal menghasilkan SQL yang aman"]}
+            )
+
+    df, err = run_sql_safe(sql)
+
+    if err:
+        return sql, pd.DataFrame({"error": [err]})
 
     return sql, df
 
 # =========================
 # STREAMLIT UI
 # =========================
+
 st.title("NL2SQL Chat App")
 
-if "chat" not in st.session_state:
-    st.session_state.chat = []
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-for role, msg in st.session_state.chat:
+for role, content in st.session_state.chat_history:
+
     with st.chat_message(role):
-        st.write(msg)
+        st.write(content)
 
-question = st.chat_input("Tanyakan SQL...")
+question = st.chat_input("Tanyakan sesuatu...")
 
 if question:
-    st.session_state.chat.append(("user", question))
+
+    st.session_state.chat_history.append(("user", question))
+
+    with st.chat_message("user"):
+        st.write(question)
 
     sql, df = ask(question)
 
     with st.chat_message("assistant"):
+
         if sql is None:
-            st.write("Gagal menghasilkan SQL aman.")
+            st.error("Gagal menghasilkan SQL yang aman.")
         else:
             st.code(sql, language="sql")
-            st.dataframe(df)
+
+            st.dataframe(df, use_container_width=True)
+
             visualize(df)
 
-    st.session_state.chat.append(("assistant", f"SQL: {sql}"))
+    st.session_state.chat_history.append(
+        ("assistant", f"SQL:\n{sql}")
+    )
