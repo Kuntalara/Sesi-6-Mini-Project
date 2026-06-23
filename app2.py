@@ -69,7 +69,10 @@ enrollments(
     nilai
 )
 """
-
+FALLBACK_MESSAGE = (
+    "Maaf, saya belum memahami instruksi Anda, "
+    "silakan perjelas instruksi Anda. Terima kasih."
+)
 # =========================
 # PROMPT
 # =========================
@@ -88,13 +91,22 @@ Aturan:
 - Jangan gunakan markdown.
 - Jangan gunakan penjelasan.
 - Output hanya SQL.
+- Jika pertanyaan tidak dapat dijawab menggunakan schema yang tersedia,
+  jawab tepat dengan: INVALID_QUERY
+
+Contoh pertanyaan di luar schema:
+- Siapa presiden Indonesia?
+- Berapa harga Bitcoin hari ini?
+- Siapa pemain terbaik Liga Inggris?
+
+Untuk contoh di atas, jawab:
+INVALID_QUERY
 
 Pertanyaan:
 {question}
 
 SQL:
 """
-
 # =========================
 # PARSER SQL
 # =========================
@@ -166,6 +178,9 @@ def validate_sql(sql: str) -> bool:
     if not sql:
         return False
 
+    if sql.strip().upper() == "INVALID_QUERY":
+        return False
+
     s = sql.lower().strip()
 
     if not s.startswith("select"):
@@ -224,29 +239,37 @@ def visualize(df: pd.DataFrame):
 
 def ask(question: str):
 
-    sql = generate_sql(question)
-
-    if not validate_sql(sql):
+    try:
 
         sql = generate_sql(question)
 
         if not validate_sql(sql):
-            return None, pd.DataFrame(
-                {"error": ["Gagal menghasilkan SQL yang aman"]}
-            )
 
-    df, err = run_sql_safe(sql)
+            sql = generate_sql(question)
 
-    if err:
-        return sql, pd.DataFrame({"error": [err]})
+            if not validate_sql(sql):
+                return None, FALLBACK_MESSAGE
 
-    return sql, df
+        df, err = run_sql_safe(sql)
 
+        if err:
+            return None, FALLBACK_MESSAGE
+
+        if df is None:
+            return None, FALLBACK_MESSAGE
+
+        if df.empty:
+            return None, FALLBACK_MESSAGE
+
+        return sql, df
+
+    except Exception:
+        return None, FALLBACK_MESSAGE
 # =========================
 # STREAMLIT UI
 # =========================
 
-st.title("AI-Powered Training Analytics Assistant")
+st.title("AI Training Analytics Assistant")
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -270,13 +293,22 @@ if question:
     with st.chat_message("assistant"):
 
         if sql is None:
-            st.error("Gagal menghasilkan SQL yang aman.")
+            st.warning(df)
+        
+            st.session_state.chat_history.append(
+                ("assistant", FALLBACK_MESSAGE)
+            )
+        
         else:
             st.code(sql, language="sql")
-
+        
             st.dataframe(df, use_container_width=True)
-
+        
             visualize(df)
+        
+            st.session_state.chat_history.append(
+                ("assistant", f"SQL:\n{sql}")
+            )
 
     st.session_state.chat_history.append(
         ("assistant", f"SQL:\n{sql}")
