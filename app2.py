@@ -76,7 +76,12 @@ FALLBACK_MESSAGE = (
 # =========================
 # PROMPT
 # =========================
+def is_out_of_schema(question: str) -> bool:
+    keywords = ["gaji", "salary", "bonus", "pendapatan", "income"]
 
+    q = question.lower()
+    return any(k in q for k in keywords)
+    
 def build_prompt(question: str) -> str:
     return f"""
 Anda adalah generator SQL PostgreSQL.
@@ -239,32 +244,32 @@ def visualize(df: pd.DataFrame):
 
 def ask(question: str):
 
-    try:
+    # 1. pre-check schema (FAST FILTER)
+    if is_out_of_schema(question):
+        return None, "Maaf, data yang Anda tanyakan tidak tersedia dalam sistem (di luar schema database)."
 
+    try:
         sql = generate_sql(question)
 
         if not validate_sql(sql):
-
             sql = generate_sql(question)
 
             if not validate_sql(sql):
-                return None, FALLBACK_MESSAGE
+                return None, "Maaf, saya tidak dapat membentuk query dari pertanyaan Anda. Silakan perjelas."
 
         df, err = run_sql_safe(sql)
 
         if err:
-            return None, FALLBACK_MESSAGE
+            return None, "Maaf, terjadi kesalahan saat mengambil data dari database."
 
-        if df is None:
-            return None, FALLBACK_MESSAGE
-
-        if df.empty:
-            return None, FALLBACK_MESSAGE
+        if df is None or df.empty:
+            return None, "Data tidak ditemukan untuk pertanyaan tersebut."
 
         return sql, df
 
     except Exception:
-        return None, FALLBACK_MESSAGE
+        return None, "Terjadi kesalahan sistem. Silakan coba lagi."
+        
 # =========================
 # STREAMLIT UI
 # =========================
@@ -275,7 +280,6 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 for role, content in st.session_state.chat_history:
-
     with st.chat_message(role):
         st.write(content)
 
@@ -294,22 +298,18 @@ if question:
 
         if sql is None:
             st.warning(df)
-        
+
             st.session_state.chat_history.append(
                 ("assistant", FALLBACK_MESSAGE)
             )
-        
+
         else:
             st.code(sql, language="sql")
-        
+
             st.dataframe(df, use_container_width=True)
-        
+
             visualize(df)
-        
+
             st.session_state.chat_history.append(
                 ("assistant", f"SQL:\n{sql}")
             )
-
-    st.session_state.chat_history.append(
-        ("assistant", f"SQL:\n{sql}")
-    )
