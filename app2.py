@@ -246,7 +246,7 @@ def ask(question: str):
 # STREAMLIT UI
 # =========================
 
-st.title("NL2SQL Chat App")
+st.title("AI-Powered Training Analytics Assistant")
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
